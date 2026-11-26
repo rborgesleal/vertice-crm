@@ -1,0 +1,6 @@
+{
+  "name": "Vértice CRM",
+  "description": "CRM de vendas com pipeline Kanban, histórico de interações, tarefas com lembretes de follow-up e relatórios mensais de desempenho.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

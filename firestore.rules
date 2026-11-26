@@ -1,0 +1,252 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(ownerId) {
+      return isVerifiedUser() && request.auth.uid == ownerId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidMonth(val) {
+      return val is string && val.size() == 7 && val.matches('^[0-9]{4}-[0-9]{2}$');
+    }
+
+    function isValidOptionalMonth(val) {
+      return val is string && (val.size() == 0 || (val.size() == 7 && val.matches('^[0-9]{4}-[0-9]{2}$')));
+    }
+
+    function isValidStage(val) {
+      return val is string && val in ['novo', 'contato', 'proposta', 'fechado'];
+    }
+
+    function isValidInteractionType(val) {
+      return val is string && val in ['ligacao', 'email', 'reuniao', 'whatsapp', 'nota'];
+    }
+
+    function isValidPriority(val) {
+      return val is string && val in ['baixa', 'media', 'alta'];
+    }
+
+    function isValidTaskStatus(val) {
+      return val is string && val in ['pendente', 'concluida'];
+    }
+
+    // --- Validation Blueprints (Anti-Update-Gap) ---
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['ownerId', 'displayName', 'monthlyGoal', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'displayName', 'monthlyGoal', 'updatedAt'])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.displayName is string && data.displayName.size() <= 120
+        && data.monthlyGoal is number && data.monthlyGoal >= 0 && data.monthlyGoal <= 1000000000
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidLead(data) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'company', 'phone', 'email',
+          'stage', 'value', 'notes', 'position',
+          'createdMonth', 'closedMonth', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'name', 'company', 'phone', 'email',
+          'stage', 'value', 'notes', 'position',
+          'createdMonth', 'closedMonth', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.company is string && data.company.size() <= 120
+        && data.phone is string && data.phone.size() <= 40
+        && data.email is string && data.email.size() <= 160
+        && isValidStage(data.stage)
+        && data.value is number && data.value >= 0 && data.value <= 1000000000
+        && data.notes is string && data.notes.size() <= 1000
+        && data.position is number && data.position >= 0 && data.position <= 1000000
+        && isValidMonth(data.createdMonth)
+        && isValidOptionalMonth(data.closedMonth)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInteraction(data, parentLeadId) {
+      return data.keys().hasAll(['ownerId', 'leadId', 'type', 'summary', 'interactionDate', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'leadId', 'type', 'summary', 'interactionDate', 'createdAt'])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && isValidId(data.leadId)
+        && data.leadId == parentLeadId
+        && isValidInteractionType(data.type)
+        && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 2000
+        && data.interactionDate is string && data.interactionDate.size() >= 10 && data.interactionDate.size() <= 25
+        && data.createdAt is timestamp;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll([
+          'ownerId', 'leadId', 'leadName', 'title', 'notes',
+          'dueDate', 'priority', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'leadId', 'leadName', 'title', 'notes',
+          'dueDate', 'priority', 'status', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && isValidId(data.leadId)
+        && data.leadName is string && data.leadName.size() >= 1 && data.leadName.size() <= 120
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.notes is string && data.notes.size() <= 1000
+        && data.dueDate is string && data.dueDate.size() >= 10 && data.dueDate.size() <= 25
+        && isValidPriority(data.priority)
+        && isValidTaskStatus(data.status)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection: /users/{userId} ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().updatedAt == request.time
+        && (
+          // Action: Update monthly sales goal or display name
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'monthlyGoal', 'updatedAt'])
+        );
+      allow delete: if false;
+    }
+
+    // --- Collection: /leads/{leadId} ---
+    match /leads/{leadId} {
+      allow get: if isValidId(leadId) && isOwner(existing().ownerId);
+      allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(leadId)
+        && isValidLead(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser()
+        && isValidId(leadId)
+        && isValidLead(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().createdMonth == existing().createdMonth
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Move lead across Kanban columns or reorder position
+          incoming().diff(existing()).affectedKeys().hasOnly(['stage', 'position', 'closedMonth', 'updatedAt'])
+          ||
+          // Action 2: Edit lead contact details, value, stage, or notes
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'company', 'phone', 'email', 'stage', 'value', 'notes', 'closedMonth', 'updatedAt'
+          ])
+        );
+      allow delete: if isValidId(leadId) && isOwner(existing().ownerId);
+
+      // --- Subcollection: /leads/{leadId}/interactions/{interactionId} ---
+      match /interactions/{interactionId} {
+        allow get: if isValidId(leadId)
+          && isValidId(interactionId)
+          && isOwner(existing().ownerId)
+          && exists(/databases/$(database)/documents/leads/$(leadId))
+          && get(/databases/$(database)/documents/leads/$(leadId)).data.ownerId == request.auth.uid;
+        allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+        allow create: if isVerifiedUser()
+          && isValidId(leadId)
+          && isValidId(interactionId)
+          && isValidInteraction(incoming(), leadId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/leads/$(leadId))
+          && get(/databases/$(database)/documents/leads/$(leadId)).data.ownerId == request.auth.uid;
+        allow update: if false;
+        allow delete: if isValidId(leadId)
+          && isValidId(interactionId)
+          && isOwner(existing().ownerId)
+          && exists(/databases/$(database)/documents/leads/$(leadId))
+          && get(/databases/$(database)/documents/leads/$(leadId)).data.ownerId == request.auth.uid;
+      }
+    }
+
+    // --- Collection: /tasks/{taskId} ---
+    match /tasks/{taskId} {
+      allow get: if isValidId(taskId) && isOwner(existing().ownerId);
+      allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(taskId)
+        && isValidTask(incoming())
+        && incoming().status == 'pendente'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/leads/$(incoming().leadId))
+        && get(/databases/$(database)/documents/leads/$(incoming().leadId)).data.ownerId == request.auth.uid;
+      allow update: if isVerifiedUser()
+        && isValidId(taskId)
+        && isValidTask(incoming())
+        && existing().ownerId == request.auth.uid
+        && existing().status != 'concluida'
+        && incoming().ownerId == existing().ownerId
+        && incoming().leadId == existing().leadId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Complete follow-up task (Terminal State transition)
+          (
+            incoming().status == 'concluida'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+          ||
+          // Action 2: Reschedule reminder date/time
+          (
+            incoming().status == 'pendente'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['dueDate', 'updatedAt'])
+          )
+          ||
+          // Action 3: Edit pending task details
+          (
+            incoming().status == 'pendente'
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'leadName', 'title', 'notes', 'dueDate', 'priority', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(taskId) && isOwner(existing().ownerId);
+    }
+  }
+}

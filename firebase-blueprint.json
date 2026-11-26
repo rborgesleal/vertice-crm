@@ -1,0 +1,269 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Configurações do usuário autenticado, incluindo meta mensal de vendas.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID do usuário proprietário."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120,
+          "description": "Nome de exibição do usuário."
+        },
+        "monthlyGoal": {
+          "type": "number",
+          "description": "Meta mensal de receita em reais (BRL)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da última atualização."
+        }
+      },
+      "required": ["ownerId", "displayName", "monthlyGoal", "updatedAt"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "Oportunidade comercial no pipeline Kanban com dados de contato e valor.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID do vendedor proprietário do lead."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Nome completo do contato ou lead."
+        },
+        "company": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120,
+          "description": "Empresa do lead."
+        },
+        "phone": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 40,
+          "description": "Telefone ou WhatsApp do lead."
+        },
+        "email": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 160,
+          "description": "E-mail do lead."
+        },
+        "stage": {
+          "type": "string",
+          "enum": ["novo", "contato", "proposta", "fechado"],
+          "description": "Coluna atual do lead no pipeline Kanban."
+        },
+        "value": {
+          "type": "number",
+          "description": "Valor estimado ou fechado do negócio em BRL."
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1000,
+          "description": "Observações gerais sobre o lead."
+        },
+        "position": {
+          "type": "number",
+          "description": "Ordem de exibição dentro da coluna do Kanban."
+        },
+        "createdMonth": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^[0-9]{4}-[0-9]{2}$",
+          "description": "Mês de entrada do lead no formato YYYY-MM."
+        },
+        "closedMonth": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 7,
+          "pattern": "^$|^[0-9]{4}-[0-9]{2}$",
+          "description": "Mês de fechamento do negócio no formato YYYY-MM ou vazio."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de criação definido pelo servidor."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de atualização definido pelo servidor."
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "company",
+        "phone",
+        "email",
+        "stage",
+        "value",
+        "notes",
+        "position",
+        "createdMonth",
+        "closedMonth",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Interaction": {
+      "title": "Interaction",
+      "description": "Registro individual no histórico de interações de um lead.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID do proprietário do lead."
+        },
+        "leadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "ID do lead pai."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["ligacao", "email", "reuniao", "whatsapp", "nota"],
+          "description": "Canal ou tipo da interação."
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "Resumo detalhado do contato realizado."
+        },
+        "interactionDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 25,
+          "description": "Data e hora da interação em formato ISO."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de criação definido pelo servidor."
+        }
+      },
+      "required": ["ownerId", "leadId", "type", "summary", "interactionDate", "createdAt"]
+    },
+    "FollowUpTask": {
+      "title": "FollowUpTask",
+      "description": "Tarefa de follow-up com data/hora de lembrete vinculada a um lead.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID do proprietário da tarefa."
+        },
+        "leadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "ID do lead associado."
+        },
+        "leadName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Nome do lead para exibição rápida nos lembretes."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Descrição curta da ação de follow-up."
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1000,
+          "description": "Detalhes adicionais da tarefa."
+        },
+        "dueDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 25,
+          "description": "Data e hora do lembrete no formato YYYY-MM-DDTHH:mm."
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["baixa", "media", "alta"],
+          "description": "Prioridade do follow-up."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pendente", "concluida"],
+          "description": "Estado atual da tarefa."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de criação definido pelo servidor."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de atualização definido pelo servidor."
+        }
+      },
+      "required": [
+        "ownerId",
+        "leadId",
+        "leadName",
+        "title",
+        "notes",
+        "dueDate",
+        "priority",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Preferências e meta mensal de vendas do usuário autenticado."
+    },
+    "/leads/{leadId}": {
+      "schema": { "$ref": "#/entities/Lead" },
+      "description": "Leads do pipeline Kanban com informações de contato (PII isolada por ownerId)."
+    },
+    "/leads/{leadId}/interactions/{interactionId}": {
+      "schema": { "$ref": "#/entities/Interaction" },
+      "description": "Histórico de interações vinculado a cada lead."
+    },
+    "/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/FollowUpTask" },
+      "description": "Tarefas de follow-up com lembretes vinculadas aos leads do usuário."
+    }
+  }
+}
