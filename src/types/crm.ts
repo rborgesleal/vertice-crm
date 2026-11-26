@@ -19,9 +19,99 @@ export const FIELD_LIMITS = {
   interactionSummary: 2000,
   taskTitle: 200,
   dateString: 25,
+  productName: 120,
+  sku: 60,
+  productNotes: 500,
+  customerName: 120,
+  orderNotes: 500,
+  movementReason: 300,
   maxValue: 1_000_000_000,
   maxPosition: 1_000_000,
+  maxStock: 1_000_000,
+  maxMinStock: 100_000,
 } as const;
+
+export const LOW_STOCK_THRESHOLD = 5;
+
+export type OrderStatus = 'pendente' | 'pago' | 'entregue';
+
+export type StockMovementType = 'entrada' | 'saida' | 'saida_pedido';
+
+export interface Product {
+  id: string;
+  ownerId: string;
+  name: string;
+  sku: string;
+  unitPrice: number;
+  stockQuantity: number;
+  minStock: number;
+  notes: string;
+  createdAt?: Timestamp | null;
+  updatedAt?: Timestamp | null;
+}
+
+export interface ProductInput {
+  name: string;
+  sku: string;
+  unitPrice: number;
+  stockQuantity: number;
+  minStock: number;
+  notes: string;
+}
+
+export interface StockMovement {
+  id: string;
+  ownerId: string;
+  productId: string;
+  productName: string;
+  type: StockMovementType;
+  quantity: number;
+  previousStock: number;
+  newStock: number;
+  reason: string;
+  orderId: string;
+  createdAt?: Timestamp | null;
+}
+
+export interface Order {
+  id: string;
+  ownerId: string;
+  customerName: string;
+  leadId: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number;
+  status: OrderStatus;
+  notes: string;
+  orderMonth: string;
+  createdAt?: Timestamp | null;
+  updatedAt?: Timestamp | null;
+}
+
+export interface OrderInput {
+  customerName: string;
+  leadId: string;
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number;
+  status: OrderStatus;
+  notes: string;
+}
+
+export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  pendente: 'Pendente',
+  pago: 'Pago',
+  entregue: 'Entregue',
+};
+
+export const MOVEMENT_TYPE_LABELS: Record<StockMovementType, string> = {
+  entrada: 'Entrada',
+  saida: 'Saída manual',
+  saida_pedido: 'Saída por pedido',
+};
 
 export const MONTH_REGEX = /^[0-9]{4}-[0-9]{2}$/;
 

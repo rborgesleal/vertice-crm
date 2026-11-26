@@ -6,7 +6,9 @@ import {
   Columns3,
   LogOut,
   Menu,
+  Package,
   Plus,
+  ShoppingCart,
   X,
 } from 'lucide-react';
 import { auth } from './lib/firebase';
@@ -26,13 +28,33 @@ import {
   subscribeUserProfile,
   updateLeadDetails,
 } from './services/crmService';
-import type {
-  FollowUpTask,
-  Lead,
-  LeadInput,
-  LeadStage,
-  TaskInput,
-  UserProfile,
+import {
+  createOrderWithStockDeduction,
+  createProduct,
+  deleteOrder,
+  deleteProduct,
+  registerStockMovement,
+  seedSampleInventoryAndOrders,
+  subscribeOrders,
+  subscribeProducts,
+  subscribeStockMovements,
+  updateOrderStatus,
+  updateProductMetadata,
+} from './services/inventoryOrderService';
+import {
+  LOW_STOCK_THRESHOLD,
+  type FollowUpTask,
+  type Lead,
+  type LeadInput,
+  type LeadStage,
+  type Order,
+  type OrderInput,
+  type OrderStatus,
+  type Product,
+  type ProductInput,
+  type StockMovement,
+  type TaskInput,
+  type UserProfile,
 } from './types/crm';
 import { isTaskOverdue } from './utils/formatters';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -43,8 +65,10 @@ import { LeadDrawer } from './components/LeadDrawer';
 import { FollowUpsView } from './components/FollowUpsView';
 import { ReportsView } from './components/ReportsView';
 import { ReminderBanner } from './components/ReminderBanner';
+import { OrdersView } from './components/OrdersView';
+import { InventoryView } from './components/InventoryView';
 
-type ActiveSection = 'pipeline' | 'followups' | 'relatorios';
+type ActiveSection = 'pipeline' | 'pedidos' | 'estoque' | 'followups' | 'relatorios';
 
 function CrmWorkspace() {
   const [user, setUser] = useState<User | null>(null);
@@ -56,18 +80,27 @@ function CrmWorkspace() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [tasks, setTasks] = useState<FollowUpTask[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [seeding, setSeeding] = useState(false);
+  const [seedingInventory, setSeedingInventory] = useState(false);
   const [fatalError, setFatalError] = useState<Error | null>(null);
 
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [newLeadModalStage, setNewLeadModalStage] = useState<LeadStage | null>(null);
+  const [newOrderTrigger, setNewOrderTrigger] = useState(0);
+  const [newProductTrigger, setNewProductTrigger] = useState(0);
 
   // Live reminder clock (ticks every 30s)
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [dismissedReminderIds, setDismissedReminderIds] = useState<Set<string>>(() => new Set());
   const [notificationsEnabled, setNotificationsEnabled] = useState(
-    () => typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted',
+    () =>
+      typeof window !== 'undefined' &&
+      'Notification' in window &&
+      Notification.permission === 'granted',
   );
   const notifiedIdsRef = useRef<Set<string>>(new Set());
 
@@ -93,6 +126,9 @@ function CrmWorkspace() {
     if (!authReady || !user) {
       setLeads([]);
       setTasks([]);
+      setProducts([]);
+      setStockMovements([]);
+      setOrders([]);
       setProfile(null);
       setLoadingData(false);
       return;
@@ -125,10 +161,31 @@ function CrmWorkspace() {
       (err) => setFatalError(err),
     );
 
+    const unsubProducts = subscribeProducts(
+      user.uid,
+      (items) => setProducts(items),
+      (err) => setFatalError(err),
+    );
+
+    const unsubMovements = subscribeStockMovements(
+      user.uid,
+      (items) => setStockMovements(items),
+      (err) => setFatalError(err),
+    );
+
+    const unsubOrders = subscribeOrders(
+      user.uid,
+      (items) => setOrders(items),
+      (err) => setFatalError(err),
+    );
+
     return () => {
       unsubProfile();
       unsubLeads();
       unsubTasks();
+      unsubProducts();
+      unsubMovements();
+      unsubOrders();
     };
   }, [authReady, user]);
 
@@ -144,6 +201,14 @@ function CrmWorkspace() {
   const pendingTaskCount = useMemo(
     () => tasks.filter((t) => t.status === 'pendente').length,
     [tasks],
+  );
+
+  const lowStockCount = useMemo(
+    () =>
+      products.filter(
+        (p) => p.stockQuantity < Math.max(LOW_STOCK_THRESHOLD, p.minStock || LOW_STOCK_THRESHOLD),
+      ).length,
+    [products],
   );
 
   // Trigger optional browser desktop notification when a reminder becomes due
@@ -215,6 +280,49 @@ function CrmWorkspace() {
     }
   }
 
+  async function handleCreateProduct(input: ProductInput) {
+    if (!user) return;
+    await createProduct(user.uid, input);
+  }
+
+  async function handleUpdateProduct(
+    productId: string,
+    input: Pick<ProductInput, 'name' | 'sku' | 'unitPrice' | 'minStock' | 'notes'>,
+  ) {
+    await updateProductMetadata(productId, input);
+  }
+
+  async function handleRegisterMovement(
+    productId: string,
+    type: 'entrada' | 'saida',
+    quantity: number,
+    reason: string,
+  ) {
+    if (!user) return;
+    await registerStockMovement(user.uid, productId, type, quantity, reason);
+  }
+
+  async function handleCreateOrder(input: OrderInput) {
+    if (!user) {
+      throw new Error('Usuário não autenticado.');
+    }
+    return createOrderWithStockDeduction(user.uid, input);
+  }
+
+  async function handleUpdateOrderStatus(orderId: string, nextStatus: OrderStatus) {
+    await updateOrderStatus(orderId, nextStatus);
+  }
+
+  async function handleSeedSampleInventory() {
+    if (!user) return;
+    setSeedingInventory(true);
+    try {
+      await seedSampleInventoryAndOrders(user.uid);
+    } finally {
+      setSeedingInventory(false);
+    }
+  }
+
   function handleEnableNotifications() {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
     void Notification.requestPermission().then((perm) => {
@@ -229,6 +337,23 @@ function CrmWorkspace() {
     }
   }
 
+  function handlePrimaryTopAction() {
+    if (activeSection === 'pedidos') {
+      if (products.length === 0) {
+        setActiveSection('estoque');
+        setNewProductTrigger((n) => n + 1);
+      } else {
+        setNewOrderTrigger((n) => n + 1);
+      }
+      return;
+    }
+    if (activeSection === 'estoque') {
+      setNewProductTrigger((n) => n + 1);
+      return;
+    }
+    setNewLeadModalStage('novo');
+  }
+
   if (!authReady) {
     return (
       <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center">
@@ -241,10 +366,32 @@ function CrmWorkspace() {
     return <AuthScreen />;
   }
 
-  const sectionMeta: Record<ActiveSection, { breadcrumb: string; title: string }> = {
-    pipeline: { breadcrumb: 'Comercial / Pipeline', title: 'Pipeline de Vendas' },
-    followups: { breadcrumb: 'Comercial / Follow-ups', title: 'Tarefas e Lembretes' },
-    relatorios: { breadcrumb: 'Comercial / Relatórios', title: 'Relatórios Mensais' },
+  const sectionMeta: Record<ActiveSection, { breadcrumb: string; title: string; cta: string }> = {
+    pipeline: {
+      breadcrumb: 'Comercial / Pipeline',
+      title: 'Pipeline de Vendas',
+      cta: 'Novo Lead',
+    },
+    pedidos: {
+      breadcrumb: 'Operações / Pedidos',
+      title: 'Pedidos de Venda',
+      cta: 'Novo Pedido',
+    },
+    estoque: {
+      breadcrumb: 'Operações / Estoque',
+      title: 'Controle de Estoque',
+      cta: 'Novo Produto',
+    },
+    followups: {
+      breadcrumb: 'Comercial / Follow-ups',
+      title: 'Tarefas e Lembretes',
+      cta: 'Novo Lead',
+    },
+    relatorios: {
+      breadcrumb: 'Comercial / Relatórios',
+      title: 'Relatórios Mensais',
+      cta: 'Novo Lead',
+    },
   };
 
   const navItems: Array<{
@@ -252,8 +399,17 @@ function CrmWorkspace() {
     label: string;
     icon: typeof Columns3;
     count?: number;
+    alertCount?: number;
   }> = [
     { id: 'pipeline', label: 'Pipeline', icon: Columns3, count: leads.length },
+    { id: 'pedidos', label: 'Pedidos', icon: ShoppingCart, count: orders.length },
+    {
+      id: 'estoque',
+      label: 'Estoque',
+      icon: Package,
+      count: products.length,
+      alertCount: lowStockCount,
+    },
     { id: 'followups', label: 'Follow-ups', icon: BellRing, count: pendingTaskCount },
     { id: 'relatorios', label: 'Relatórios', icon: BarChart3 },
   ];
@@ -289,11 +445,19 @@ function CrmWorkspace() {
                   <Icon className="w-4 h-4 shrink-0" />
                   <span>{item.label}</span>
                 </span>
-                {typeof item.count === 'number' && (
-                  <span className="text-xs font-mono tabular-nums text-[#6B7280]">
-                    {item.count}
-                  </span>
-                )}
+                <span className="inline-flex items-center gap-1.5 text-xs font-mono tabular-nums">
+                  {typeof item.alertCount === 'number' && item.alertCount > 0 && (
+                    <span
+                      title={`${item.alertCount} ${item.alertCount === 1 ? 'item abaixo de 5 unidades' : 'itens abaixo de 5 unidades'}`}
+                      className="text-[#B91C1C] font-semibold"
+                    >
+                      !{item.alertCount}
+                    </span>
+                  )}
+                  {typeof item.count === 'number' && (
+                    <span className="text-[#6B7280]">{item.count}</span>
+                  )}
+                </span>
               </button>
             );
           })}
@@ -362,11 +526,14 @@ function CrmWorkspace() {
                       <Icon className="w-4 h-4" />
                       <span>{item.label}</span>
                     </span>
-                    {typeof item.count === 'number' && (
-                      <span className="text-xs font-mono tabular-nums text-[#6B7280]">
-                        {item.count}
-                      </span>
-                    )}
+                    <span className="inline-flex items-center gap-1.5 text-xs font-mono tabular-nums">
+                      {typeof item.alertCount === 'number' && item.alertCount > 0 && (
+                        <span className="text-[#B91C1C] font-semibold">!{item.alertCount}</span>
+                      )}
+                      {typeof item.count === 'number' && (
+                        <span className="text-[#6B7280]">{item.count}</span>
+                      )}
+                    </span>
                   </button>
                 );
               })}
@@ -410,11 +577,11 @@ function CrmWorkspace() {
 
           <button
             type="button"
-            onClick={() => setNewLeadModalStage('novo')}
+            onClick={handlePrimaryTopAction}
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             <Plus className="w-4 h-4" />
-            Novo Lead
+            {sectionMeta[activeSection].cta}
           </button>
         </header>
 
@@ -439,6 +606,35 @@ function CrmWorkspace() {
               onOpenNewLead={(stage) => setNewLeadModalStage(stage)}
               onMoveLead={handleMoveLead}
               onSeedSampleData={handleSeedSampleData}
+            />
+          )}
+
+          {activeSection === 'pedidos' && (
+            <OrdersView
+              orders={orders}
+              products={products}
+              leads={leads}
+              seeding={seedingInventory}
+              openCreateModalTrigger={newOrderTrigger}
+              onCreateOrder={handleCreateOrder}
+              onUpdateOrderStatus={handleUpdateOrderStatus}
+              onDeleteOrder={deleteOrder}
+              onGoToInventory={() => setActiveSection('estoque')}
+              onSeedSampleInventory={handleSeedSampleInventory}
+            />
+          )}
+
+          {activeSection === 'estoque' && (
+            <InventoryView
+              products={products}
+              movements={stockMovements}
+              seeding={seedingInventory}
+              openCreateModalTrigger={newProductTrigger}
+              onCreateProduct={handleCreateProduct}
+              onUpdateProduct={handleUpdateProduct}
+              onRegisterMovement={handleRegisterMovement}
+              onDeleteProduct={deleteProduct}
+              onSeedSampleInventory={handleSeedSampleInventory}
             />
           )}
 

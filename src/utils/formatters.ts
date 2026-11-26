@@ -9,6 +9,25 @@ export function sanitizeNumber(value: number, min = 0, max: number = FIELD_LIMIT
   return Math.min(max, Math.max(min, Math.round(value * 100) / 100));
 }
 
+export function sanitizeInt(value: number, min = 0, max: number = FIELD_LIMITS.maxStock): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+export function formatFirestoreTimestamp(
+  ts: { toDate?: () => Date } | null | undefined,
+): string {
+  if (!ts || typeof ts.toDate !== 'function') return 'Agora';
+  const date = ts.toDate();
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
 export function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',

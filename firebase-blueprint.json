@@ -246,6 +246,238 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Produto controlado no módulo de estoque com preço unitário, quantidade atual e limite mínimo de alerta.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID do proprietário do produto."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Nome do produto."
+        },
+        "sku": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60,
+          "description": "Código SKU interno do produto."
+        },
+        "unitPrice": {
+          "type": "number",
+          "description": "Preço unitário de venda em BRL."
+        },
+        "stockQuantity": {
+          "type": "integer",
+          "description": "Quantidade disponível em estoque."
+        },
+        "minStock": {
+          "type": "integer",
+          "description": "Limite mínimo de alerta de estoque baixo (padrão 5)."
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 500,
+          "description": "Observações ou especificações do produto."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de criação definido pelo servidor."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de atualização definido pelo servidor."
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "sku",
+        "unitPrice",
+        "stockQuantity",
+        "minStock",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StockMovement": {
+      "title": "StockMovement",
+      "description": "Registro auditável de entrada, saída manual ou baixa automática por pedido no estoque.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID do proprietário."
+        },
+        "productId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "ID do produto movimentado."
+        },
+        "productName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Nome do produto no momento da movimentação."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["entrada", "saida", "saida_pedido"],
+          "description": "Tipo da movimentação de estoque."
+        },
+        "quantity": {
+          "type": "integer",
+          "description": "Quantidade movimentada (inteiro positivo)."
+        },
+        "previousStock": {
+          "type": "integer",
+          "description": "Saldo em estoque antes da movimentação."
+        },
+        "newStock": {
+          "type": "integer",
+          "description": "Saldo em estoque após a movimentação."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 300,
+          "description": "Motivo ou referência da movimentação."
+        },
+        "orderId": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 128,
+          "description": "ID do pedido associado quando for saída automática por pedido."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de criação definido pelo servidor."
+        }
+      },
+      "required": [
+        "ownerId",
+        "productId",
+        "productName",
+        "type",
+        "quantity",
+        "previousStock",
+        "newStock",
+        "reason",
+        "orderId",
+        "createdAt"
+      ]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Pedido comercial vinculado a um produto do estoque com baixa automática de quantidade.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID do proprietário do pedido."
+        },
+        "customerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Nome do cliente do pedido."
+        },
+        "leadId": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 128,
+          "description": "ID opcional do lead vinculado no CRM."
+        },
+        "productId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "ID do produto vendido."
+        },
+        "productName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Nome do produto no momento do pedido."
+        },
+        "quantity": {
+          "type": "integer",
+          "description": "Quantidade vendida e baixada do estoque."
+        },
+        "unitPrice": {
+          "type": "number",
+          "description": "Preço unitário do produto no pedido em BRL."
+        },
+        "totalValue": {
+          "type": "number",
+          "description": "Valor total do pedido em BRL."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pendente", "pago", "entregue"],
+          "description": "Status atual do pedido."
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 500,
+          "description": "Observações de pagamento ou entrega."
+        },
+        "orderMonth": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^[0-9]{4}-[0-9]{2}$",
+          "description": "Mês do pedido no formato YYYY-MM."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de criação definido pelo servidor."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de atualização definido pelo servidor."
+        }
+      },
+      "required": [
+        "ownerId",
+        "customerName",
+        "leadId",
+        "productId",
+        "productName",
+        "quantity",
+        "unitPrice",
+        "totalValue",
+        "status",
+        "notes",
+        "orderMonth",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -264,6 +496,18 @@
     "/tasks/{taskId}": {
       "schema": { "$ref": "#/entities/FollowUpTask" },
       "description": "Tarefas de follow-up com lembretes vinculadas aos leads do usuário."
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Cadastro de produtos e saldo de estoque controlado por usuário."
+    },
+    "/stockMovements/{movementId}": {
+      "schema": { "$ref": "#/entities/StockMovement" },
+      "description": "Histórico imutável de entradas, saídas manuais e baixas automáticas de estoque."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Pedidos de clientes com baixa atômica obrigatória do estoque do produto."
     }
   }
 }

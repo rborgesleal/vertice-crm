@@ -24,6 +24,10 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidOptionalId(id) {
+      return id is string && (id.size() == 0 || (id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$')));
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -54,6 +58,14 @@ service cloud.firestore {
 
     function isValidTaskStatus(val) {
       return val is string && val in ['pendente', 'concluida'];
+    }
+
+    function isValidOrderStatus(val) {
+      return val is string && val in ['pendente', 'pago', 'entregue'];
+    }
+
+    function isValidMovementType(val) {
+      return val is string && val in ['entrada', 'saida', 'saida_pedido'];
     }
 
     // --- Validation Blueprints (Anti-Update-Gap) ---
@@ -126,6 +138,81 @@ service cloud.firestore {
         && data.dueDate is string && data.dueDate.size() >= 10 && data.dueDate.size() <= 25
         && isValidPriority(data.priority)
         && isValidTaskStatus(data.status)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'sku', 'unitPrice', 'stockQuantity',
+          'minStock', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'name', 'sku', 'unitPrice', 'stockQuantity',
+          'minStock', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.sku is string && data.sku.size() <= 60
+        && data.unitPrice is number && data.unitPrice >= 0 && data.unitPrice <= 1000000000
+        && data.stockQuantity is int && data.stockQuantity >= 0 && data.stockQuantity <= 1000000
+        && data.minStock is int && data.minStock >= 0 && data.minStock <= 100000
+        && data.notes is string && data.notes.size() <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStockMovement(data) {
+      return data.keys().hasAll([
+          'ownerId', 'productId', 'productName', 'type', 'quantity',
+          'previousStock', 'newStock', 'reason', 'orderId', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'productId', 'productName', 'type', 'quantity',
+          'previousStock', 'newStock', 'reason', 'orderId', 'createdAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && isValidId(data.productId)
+        && data.productName is string && data.productName.size() >= 1 && data.productName.size() <= 120
+        && isValidMovementType(data.type)
+        && data.quantity is int && data.quantity >= 1 && data.quantity <= 1000000
+        && data.previousStock is int && data.previousStock >= 0 && data.previousStock <= 1000000
+        && data.newStock is int && data.newStock >= 0 && data.newStock <= 1000000
+        && data.reason is string && data.reason.size() <= 300
+        && isValidOptionalId(data.orderId)
+        && data.createdAt is timestamp
+        && (
+          (data.type == 'entrada' && data.newStock == data.previousStock + data.quantity)
+          ||
+          (data.type in ['saida', 'saida_pedido'] && data.newStock == data.previousStock - data.quantity)
+        );
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll([
+          'ownerId', 'customerName', 'leadId', 'productId', 'productName',
+          'quantity', 'unitPrice', 'totalValue', 'status', 'notes',
+          'orderMonth', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'customerName', 'leadId', 'productId', 'productName',
+          'quantity', 'unitPrice', 'totalValue', 'status', 'notes',
+          'orderMonth', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 120
+        && isValidOptionalId(data.leadId)
+        && isValidId(data.productId)
+        && data.productName is string && data.productName.size() >= 1 && data.productName.size() <= 120
+        && data.quantity is int && data.quantity >= 1 && data.quantity <= 1000000
+        && data.unitPrice is number && data.unitPrice >= 0 && data.unitPrice <= 1000000000
+        && data.totalValue is number && data.totalValue >= 0 && data.totalValue <= 1000000000
+        && isValidOrderStatus(data.status)
+        && data.notes is string && data.notes.size() <= 500
+        && isValidMonth(data.orderMonth)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -247,6 +334,87 @@ service cloud.firestore {
           )
         );
       allow delete: if isValidId(taskId) && isOwner(existing().ownerId);
+    }
+
+    // --- Collection: /products/{productId} ---
+    match /products/{productId} {
+      allow get: if isValidId(productId) && isOwner(existing().ownerId);
+      allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(productId)
+        && isValidProduct(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser()
+        && isValidId(productId)
+        && isValidProduct(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Stock adjustment (entry, manual exit, or atomic order deduction)
+          incoming().diff(existing()).affectedKeys().hasOnly(['stockQuantity', 'updatedAt'])
+          ||
+          // Action 2: Edit product catalog metadata
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'sku', 'unitPrice', 'minStock', 'notes', 'updatedAt'
+          ])
+        );
+      allow delete: if isValidId(productId) && isOwner(existing().ownerId);
+    }
+
+    // --- Collection: /stockMovements/{movementId} ---
+    match /stockMovements/{movementId} {
+      allow get: if isValidId(movementId) && isOwner(existing().ownerId);
+      allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(movementId)
+        && isValidStockMovement(incoming())
+        && incoming().createdAt == request.time
+        && existsAfter(/databases/$(database)/documents/products/$(incoming().productId))
+        && getAfter(/databases/$(database)/documents/products/$(incoming().productId)).data.ownerId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/products/$(incoming().productId)).data.stockQuantity == incoming().newStock;
+      allow update: if false;
+      allow delete: if isValidId(movementId) && isOwner(existing().ownerId);
+    }
+
+    // --- Collection: /orders/{orderId} ---
+    match /orders/{orderId} {
+      allow get: if isValidId(orderId) && isOwner(existing().ownerId);
+      allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && isValidId(orderId)
+        && isValidOrder(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/products/$(incoming().productId))
+        && get(/databases/$(database)/documents/products/$(incoming().productId)).data.ownerId == request.auth.uid
+        && get(/databases/$(database)/documents/products/$(incoming().productId)).data.stockQuantity >= incoming().quantity
+        && getAfter(/databases/$(database)/documents/products/$(incoming().productId)).data.stockQuantity
+           == get(/databases/$(database)/documents/products/$(incoming().productId)).data.stockQuantity - incoming().quantity;
+      allow update: if isVerifiedUser()
+        && isValidId(orderId)
+        && isValidOrder(incoming())
+        && existing().ownerId == request.auth.uid
+        && existing().status != 'entregue'
+        && incoming().ownerId == existing().ownerId
+        && incoming().productId == existing().productId
+        && incoming().productName == existing().productName
+        && incoming().quantity == existing().quantity
+        && incoming().unitPrice == existing().unitPrice
+        && incoming().totalValue == existing().totalValue
+        && incoming().orderMonth == existing().orderMonth
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Update order status (Pendente -> Pago -> Entregue)
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          ||
+          // Action 2: Edit customer reference or notes before delivery
+          incoming().diff(existing()).affectedKeys().hasOnly(['customerName', 'leadId', 'notes', 'updatedAt'])
+        );
+      allow delete: if isValidId(orderId) && isOwner(existing().ownerId);
     }
   }
 }
