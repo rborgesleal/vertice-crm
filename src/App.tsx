@@ -9,6 +9,7 @@ import {
   Package,
   Plus,
   ShoppingCart,
+  Tag,
   X,
 } from 'lucide-react';
 import { auth } from './lib/firebase';
@@ -67,8 +68,15 @@ import { ReportsView } from './components/ReportsView';
 import { ReminderBanner } from './components/ReminderBanner';
 import { OrdersView } from './components/OrdersView';
 import { InventoryView } from './components/InventoryView';
+import { ProductsView } from './components/ProductsView';
 
-type ActiveSection = 'pipeline' | 'pedidos' | 'estoque' | 'followups' | 'relatorios';
+type ActiveSection =
+  | 'pipeline'
+  | 'produtos'
+  | 'pedidos'
+  | 'estoque'
+  | 'followups'
+  | 'relatorios';
 
 function CrmWorkspace() {
   const [user, setUser] = useState<User | null>(null);
@@ -92,6 +100,7 @@ function CrmWorkspace() {
   const [newLeadModalStage, setNewLeadModalStage] = useState<LeadStage | null>(null);
   const [newOrderTrigger, setNewOrderTrigger] = useState(0);
   const [newProductTrigger, setNewProductTrigger] = useState(0);
+  const [focusProductFormTrigger, setFocusProductFormTrigger] = useState(0);
 
   // Live reminder clock (ticks every 30s)
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -338,10 +347,14 @@ function CrmWorkspace() {
   }
 
   function handlePrimaryTopAction() {
+    if (activeSection === 'produtos') {
+      setFocusProductFormTrigger((n) => n + 1);
+      return;
+    }
     if (activeSection === 'pedidos') {
       if (products.length === 0) {
-        setActiveSection('estoque');
-        setNewProductTrigger((n) => n + 1);
+        setActiveSection('produtos');
+        setFocusProductFormTrigger((n) => n + 1);
       } else {
         setNewOrderTrigger((n) => n + 1);
       }
@@ -371,6 +384,11 @@ function CrmWorkspace() {
       breadcrumb: 'Comercial / Pipeline',
       title: 'Pipeline de Vendas',
       cta: 'Novo Lead',
+    },
+    produtos: {
+      breadcrumb: 'Catálogo / Produtos',
+      title: 'Cadastro de Produtos',
+      cta: 'Novo Produto',
     },
     pedidos: {
       breadcrumb: 'Operações / Pedidos',
@@ -402,6 +420,7 @@ function CrmWorkspace() {
     alertCount?: number;
   }> = [
     { id: 'pipeline', label: 'Pipeline', icon: Columns3, count: leads.length },
+    { id: 'produtos', label: 'Produtos', icon: Tag, count: products.length },
     { id: 'pedidos', label: 'Pedidos', icon: ShoppingCart, count: orders.length },
     {
       id: 'estoque',
@@ -606,6 +625,19 @@ function CrmWorkspace() {
               onOpenNewLead={(stage) => setNewLeadModalStage(stage)}
               onMoveLead={handleMoveLead}
               onSeedSampleData={handleSeedSampleData}
+            />
+          )}
+
+          {activeSection === 'produtos' && (
+            <ProductsView
+              products={products}
+              seeding={seedingInventory}
+              focusFormTrigger={focusProductFormTrigger}
+              onCreateProduct={handleCreateProduct}
+              onUpdateProduct={handleUpdateProduct}
+              onDeleteProduct={deleteProduct}
+              onGoToInventory={() => setActiveSection('estoque')}
+              onSeedSampleInventory={handleSeedSampleInventory}
             />
           )}
 
